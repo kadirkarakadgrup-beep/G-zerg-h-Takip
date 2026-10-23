@@ -42,8 +42,8 @@ td.e{color:var(--mut)}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .btn.p{background:var(--ac);border-color:var(--ac);color:#fff}
 .btn.d{color:var(--dng)}
-#stt{font-size:13px;color:var(--mut);margin-top:8px;min-height:18px}
-#stt.ok{color:var(--ac)}#stt.er{color:var(--dng)}
+#stt,#stt2{font-size:13px;color:var(--mut);margin-top:8px;min-height:18px}
+#stt.ok,#stt2.ok{color:var(--ac)}#stt.er,#stt2.er{color:var(--dng)}
 </style>
 </head>
 <body>
@@ -71,9 +71,12 @@ td.e{color:var(--mut)}
 <div class="card">
 <h2 id="wt">Haftalık tablo</h2>
 <div class="wrap"><table><thead><tr><th>Tarih</th><th>Gün</th><th>Güzergah</th><th>Not</th></tr></thead><tbody id="tb"></tbody></table></div>
-<div class="row"><button class="btn p" id="cw">Haftayı kopyala (Excel)</button><button class="btn" id="ca">Tüm kayıtları kopyala</button></div>
+<div class="row"><button class="btn p" id="xw">Haftayı Excel indir</button><button class="btn p" id="xa">Tümünü Excel indir</button></div>
+<div class="row"><button class="btn" id="cw">Haftayı kopyala</button><button class="btn" id="ca">Tümünü kopyala</button></div>
+<div id="stt2"></div>
 </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // Firebase Realtime Database adresini buraya yazın (sonunda / olmasın). Boşsa uygulama içinden sorulur.
 var FB="https://servis-takip-d7697-default-rtdb.europe-west1.firebasedatabase.app";
@@ -94,6 +97,7 @@ function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").repl
 function norm(o){return {r:(o&&o.r)?o.r.filter(Boolean):[],n:(o&&o.n)||""}}
 function loc(){try{localStorage.setItem(LS,JSON.stringify(st))}catch(e){}}
 function say(t,c){var s=$("stt");s.textContent=t;s.className=c||""}
+function say2(t,c){var s=$("stt2");s.textContent=t;s.className=c||""}
 var cur=iso(new Date());
 function load(){var o=norm(st.days[cur]);draft={r:o.r.slice(),n:o.n}}
 function net(path,method,body){
@@ -155,8 +159,24 @@ $("nx").onclick=function(){go(iso(add(parse(cur),1)))};
 $("tod").onclick=function(){go(iso(new Date()))};
 $("clr").onclick=function(){draft={r:[],n:""};$("nt").value="";dirty=true;draw()};
 $("fbb").onclick=function(){var v=$("fbu").value.trim();if(!/^https:\/\/.+/.test(v))return;FB=v;try{localStorage.setItem(LS+"u",v)}catch(e){}pull();draw()};
-function cp(s,ok){try{navigator.clipboard.writeText(s).then(function(){say(ok,"ok")},function(){say("Kopyalanamadı. Tablonun ekran görüntüsünü alın.","er")})}catch(x){say("Kopyalanamadı. Tablonun ekran görüntüsünü alın.","er")}}
+function cp(s,ok){try{navigator.clipboard.writeText(s).then(function(){say2(ok,"ok")},function(){say2("Kopyalanamadı. Tablonun ekran görüntüsünü alın.","er")})}catch(x){say2("Kopyalanamadı. Tablonun ekran görüntüsünü alın.","er")}}
+function rowsOf(keys){return keys.map(function(k){var x=parse(k),o=norm(st.days[k]);return [fmt(x),G[x.getDay()],o.r.join(" - "),o.n]})}
+function dl(keys,name){
+var head=["Tarih","Gün","Güzergah","Not"],rows=rowsOf(keys);
+try{
+if(window.XLSX){
+var ws=XLSX.utils.aoa_to_sheet([head].concat(rows));ws["!cols"]=[{wch:12},{wch:13},{wch:32},{wch:32}];
+var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Servis");XLSX.writeFile(wb,name+".xlsx");
+say2("İndirildi: "+name+".xlsx","ok");return}
+}catch(e){}
+try{
+var csv="\ufeff"+[head].concat(rows).map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(";")}).join("\r\n");
+var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=name+".csv";document.body.appendChild(a);a.click();a.remove();
+say2("İndirildi: "+name+".csv (Excel ile açılır)","ok")
+}catch(e){say2("İndirilemedi. Kopyala düğmesini kullanın.","er")}}
 function line(k){var x=parse(k),o=norm(st.days[k]);return fmt(x)+"\t"+G[x.getDay()]+"\t"+o.r.join(" - ")+"\t"+o.n+"\n"}
+$("xw").onclick=function(){var m=monday(parse(cur)),k=[];for(var i=0;i<6;i++)k.push(iso(add(m,i)));dl(k,"servis-hafta-"+iso(m))};
+$("xa").onclick=function(){var k=Object.keys(st.days).sort();if(!k.length){say2("Henüz kayıt yok.","er");return}dl(k,"servis-tum-kayitlar")};
 $("cw").onclick=function(){var m=monday(parse(cur)),s="Tarih\tGün\tGüzergah\tNot\n";for(var i=0;i<6;i++)s+=line(iso(add(m,i)));cp(s,"Hafta kopyalandı. Excel’e yapıştırın.")};
 $("ca").onclick=function(){var s="Tarih\tGün\tGüzergah\tNot\n";Object.keys(st.days).sort().forEach(function(k){s+=line(k)});cp(s,"Tüm kayıtlar kopyalandı.")};
 load();draw();pull();
